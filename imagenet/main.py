@@ -256,14 +256,23 @@ def main_worker(gpu, ngpus_per_node, args):
             }, is_best)
 
 
+_count = 0
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
+
+    forward_time = AverageMeter('forward', ':6.3f')
+    backward_time = AverageMeter('backward', ':6.3f')
+
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
-    progress = ProgressMeter(len(train_loader), batch_time, data_time, losses, top1,
-                             top5, prefix="Epoch: [{}]".format(epoch))
+    progress = ProgressMeter(len(train_loader),
+                             batch_time,
+                             data_time,
+                             forward_time,
+                             backward_time,
+                             losses, top1, top5, prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
     model.train()
@@ -278,7 +287,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
+        _t1 = time.time()
         output = model(input)
+        forward_time.update(time.time() - _t1)
+
         loss = criterion(output, target)
 
         # measure accuracy and record loss
@@ -289,7 +301,9 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
+        _t1 = time.time()
         loss.backward()
+        backward_time.update(time.time() - _t1)
         optimizer.step()
 
         # measure elapsed time
@@ -298,6 +312,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         if i % args.print_freq == 0:
             progress.print(i)
+            global _count
+            _count += 1
+            if _count == 5:
+                sys.exit(0)
 
 
 def validate(val_loader, model, criterion, args):
