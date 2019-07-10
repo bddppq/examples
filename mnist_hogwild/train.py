@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -6,6 +7,7 @@ from torchvision import datasets, transforms
 
 
 def train(rank, args, model, device, dataloader_kwargs):
+    start_time = time.time()
     torch.manual_seed(args.seed + rank)
 
     train_loader = torch.utils.data.DataLoader(
@@ -20,6 +22,8 @@ def train(rank, args, model, device, dataloader_kwargs):
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     for epoch in range(1, args.epochs + 1):
         train_epoch(epoch, args, model, device, train_loader, optimizer)
+    end_time = time.time()
+    print('Total time (rank {}): {:.3f}s'.format(rank, end_time - start_time))
 
 
 def test(args, model, device, dataloader_kwargs):
