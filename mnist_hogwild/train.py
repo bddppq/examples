@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -6,31 +7,43 @@ from torchvision import datasets, transforms
 
 
 def train(rank, args, model, device, dataloader_kwargs):
+    start_time = time.time()
     torch.manual_seed(args.seed + rank)
 
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../data', train=True, download=True,
-                    transform=transforms.Compose([
-                        transforms.ToTensor(),
-                        transforms.Normalize((0.1307,), (0.3081,))
-                    ])),
-        batch_size=args.batch_size, shuffle=True, num_workers=1,
+        datasets.ImageFolder(
+            '/data/users/jbai/imagenet_full_size/train',
+            transforms.Compose([
+                transforms.RandomResizedCrop(224),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+            ])),
+        batch_size=args.batch_size, shuffle=True, num_workers=4,
         **dataloader_kwargs)
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     for epoch in range(1, args.epochs + 1):
         train_epoch(epoch, args, model, device, train_loader, optimizer)
+    end_time = time.time()
+    print('Total time (rank {}): {:.3f}s'.format(rank, end_time - start_time))
 
 
 def test(args, model, device, dataloader_kwargs):
     torch.manual_seed(args.seed)
 
     test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../data', train=False, transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,))
-        ])),
-        batch_size=args.batch_size, shuffle=True, num_workers=1,
+        datasets.ImageFolder(
+            '/data/users/jbai/imagenet_full_size/val',
+            transforms.Compose([
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+            ])),
+        batch_size=args.batch_size, shuffle=False, num_workers=4,
         **dataloader_kwargs)
 
     test_epoch(model, device, test_loader)
@@ -42,7 +55,7 @@ def train_epoch(epoch, args, model, device, data_loader, optimizer):
     for batch_idx, (data, target) in enumerate(data_loader):
         optimizer.zero_grad()
         output = model(data.to(device))
-        loss = F.nll_loss(output, target.to(device))
+        loss = F.cross_entropy(output, target.to(device))
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:

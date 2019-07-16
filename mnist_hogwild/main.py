@@ -1,9 +1,11 @@
 from __future__ import print_function
 import argparse
+import threading
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.multiprocessing as mp
+import torchvision.models as models
 
 from train import train, test
 
@@ -27,6 +29,10 @@ parser.add_argument('--num-processes', type=int, default=2, metavar='N',
                     help='how many training processes to use (default: 2)')
 parser.add_argument('--cuda', action='store_true', default=False,
                     help='enables CUDA training')
+parser.add_argument('--multithreading', dest='multiprocessing',
+                    action='store_false', default=True,
+                    help='Use multi-threading to launch training instances')
+
 
 class Net(nn.Module):
     def __init__(self):
@@ -46,6 +52,18 @@ class Net(nn.Module):
         x = self.fc2(x)
         return F.log_softmax(x, dim=1)
 
+
+class ForkNet(torch.jit.ScriptModule):
+    def __init__(self, script_model):
+        super(ForkNet, self).__init__()
+        self.script_model = script_model
+
+    @torch.jit.script_method
+    def forward(self, x):
+        f = torch.jit._fork(self.script_model, x)
+        return torch.jit._wait(f)
+
+
 if __name__ == '__main__':
     args = parser.parse_args()
 
@@ -54,19 +72,28 @@ if __name__ == '__main__':
     dataloader_kwargs = {'pin_memory': True} if use_cuda else {}
 
     torch.manual_seed(args.seed)
-    mp.set_start_method('spawn')
 
-    model = Net().to(device)
-    model.share_memory() # gradients are allocated lazily, so they are not shared here
+    model = models.resnet18(pretrained=False)
+
+    if args.multiprocessing:
+        mp.set_start_method('spawn')
+        model.share_memory() # gradients are allocated lazily, so they are not shared here
+        launcher = mp.Process
+    else:
+        model = torch.jit.trace(model, torch.randn(1, 3, 224, 224, dtype=torch.float))
+        model = ForkNet(model)
+        launcher = threading.Thread
+        torch.set_num_interop_threads(args.num_processes)
 
     processes = []
     for rank in range(args.num_processes):
-        p = mp.Process(target=train, args=(rank, args, model, device, dataloader_kwargs))
+        p = launcher(target=train, args=(rank, args, model, device, dataloader_kwargs))
         # We first train the model across `num_processes` processes
         p.start()
         processes.append(p)
     for p in processes:
         p.join()
+
 
     # Once training is complete, we can test the model
     test(args, model, device, dataloader_kwargs)
