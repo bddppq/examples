@@ -54,11 +54,11 @@ if __name__ == '__main__':
     dataloader_kwargs = {'pin_memory': True} if use_cuda else {}
 
     torch.manual_seed(args.seed)
-    mp.set_start_method('spawn')
+    # mp.set_start_method('spawn')
 
-    model = Net().to(device)
+    model = torch.jit.script(Net()).to(device)
     model.share_memory() # gradients are allocated lazily, so they are not shared here
-
+    print(model.conv1.weight[0])
     processes = []
     for rank in range(args.num_processes):
         p = mp.Process(target=train, args=(rank, args, model, device, dataloader_kwargs))
@@ -67,6 +67,6 @@ if __name__ == '__main__':
         processes.append(p)
     for p in processes:
         p.join()
-
+    print(model.conv1.weight[0])
     # Once training is complete, we can test the model
     test(args, model, device, dataloader_kwargs)
