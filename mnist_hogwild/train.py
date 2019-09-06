@@ -6,20 +6,23 @@ from torchvision import datasets, transforms
 
 
 def train(rank, args, model, device, dataloader_kwargs):
-    torch.manual_seed(args.seed + rank)
+    model = torch.jit.script(model)
+    model.conv1.weight[0] = 1
 
-    train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../data', train=True, download=True,
-                    transform=transforms.Compose([
-                        transforms.ToTensor(),
-                        transforms.Normalize((0.1307,), (0.3081,))
-                    ])),
-        batch_size=args.batch_size, shuffle=True, num_workers=1,
-        **dataloader_kwargs)
+    # torch.manual_seed(args.seed + rank)
 
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
-    for epoch in range(1, args.epochs + 1):
-        train_epoch(epoch, args, model, device, train_loader, optimizer)
+    # train_loader = torch.utils.data.DataLoader(
+    #     datasets.MNIST('../data', train=True, download=True,
+    #                 transform=transforms.Compose([
+    #                     transforms.ToTensor(),
+    #                     transforms.Normalize((0.1307,), (0.3081,))
+    #                 ])),
+    #     batch_size=args.batch_size, shuffle=True, num_workers=1,
+    #     **dataloader_kwargs)
+
+    # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    # for epoch in range(1, args.epochs + 1):
+    #     train_epoch(epoch, args, model, device, train_loader, optimizer)
 
 
 def test(args, model, device, dataloader_kwargs):

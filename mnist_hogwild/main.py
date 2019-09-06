@@ -59,6 +59,7 @@ if __name__ == '__main__':
     model = Net().to(device)
     model.share_memory() # gradients are allocated lazily, so they are not shared here
 
+    print(model.conv1.weight[0])
     processes = []
     for rank in range(args.num_processes):
         p = mp.Process(target=train, args=(rank, args, model, device, dataloader_kwargs))
@@ -67,6 +68,6 @@ if __name__ == '__main__':
         processes.append(p)
     for p in processes:
         p.join()
-
+    print(model.conv1.weight[0])
     # Once training is complete, we can test the model
     test(args, model, device, dataloader_kwargs)
